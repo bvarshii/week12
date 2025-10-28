@@ -4,21 +4,67 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.alert import Alert
 from webdriver_manager.chrome import ChromeDriverManager
+import subprocess
 import time
+import requests
+import os
+import signal
 
-# Fixture for setting up and tearing down the driver
+# ------------------------------------------------------------
+# Fixture: Start Flask app before all tests and stop after
+# ------------------------------------------------------------
+@pytest.fixture(scope="session", autouse=True)
+def start_flask_app():
+    print(" Starting Flask app...")
+    process = subprocess.Popen(
+        ["python", "app.py"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # for Windows
+    )
+
+    time.sleep(5)
+
+    try:
+        requests.get("http://127.0.0.1:5000")
+        print(" Flask app is running.")
+    except requests.exceptions.ConnectionError:
+        process.kill()
+        pytest.fail(" Flask app did not start properly.")
+
+    yield
+
+    print(" Shutting down Flask app...")
+    try:
+        process.send_signal(signal.CTRL_BREAK_EVENT)
+        time.sleep(2)
+        process.kill()
+        print(" Flask app stopped.")
+    except Exception as e:
+        print(f" Error stopping Flask app: {e}")
+
+# ------------------------------------------------------------
+# Fixture: Selenium WebDriver setup/teardown
+# ------------------------------------------------------------
 @pytest.fixture
 def setup_teardown():
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+    driver.maximize_window()
     yield driver
     driver.quit()
 
-# Helper to get alert text safely
+# ------------------------------------------------------------
+# Helper: Get alert text safely
+# ------------------------------------------------------------
 def get_alert_text(driver):
     alert = Alert(driver)
     text = alert.text
     alert.accept()
     return text
+
+# ------------------------------------------------------------
+# Tests
+# ------------------------------------------------------------
 
 # Test 1: Empty username
 def test_empty_username(setup_teardown):
@@ -57,9 +103,9 @@ def test_short_password(setup_teardown):
 
     time.sleep(1)
     alert_text = get_alert_text(driver)
-    assert alert_text == "Password must be at least 6 characters long."
+    assert alert_text == "Password must be atleast 6 characters long."
 
-# ✅ Test 4: Valid input — should redirect to greeting.html
+# Test 4: Valid input — should redirect to greeting.html
 def test_valid_input(setup_teardown):
     driver = setup_teardown
     driver.get("http://127.0.0.1:5000/")
@@ -68,13 +114,9 @@ def test_valid_input(setup_teardown):
     driver.find_element(By.NAME, "pwd").send_keys("abc123")
     driver.find_element(By.NAME, "sb").click()
 
-    # Wait for redirect
     time.sleep(2)
-
-    # Verify URL
     current_url = driver.current_url
-    assert "/submit" in current_url, f"Expected redirect to greeting.html, but got: {current_url}"
+    assert "/submit" in current_url, f"Expected redirect to greeting page, got: {current_url}"
 
-    # Verify greeting message
     body_text = driver.find_element(By.TAG_NAME, "body").text
-    assert "Hello, Alice! Welcome to the website" in body_text, f"Greeting not found or incorrect: {body_text}"
+    assert "Hello, Alice! Welcome to the website" in body_text, f"Greeting missing: {body_text}"
