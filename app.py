@@ -4,13 +4,20 @@ app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return render_template('form.html')
+    return render_template('index.html')
 
-@app.route('/submit', methods=['GET','POST'])
-def submit():
-    # Get data from the form
-    username = request.form['username']
-    return render_template('greeting.html', name=username)
+@app.route('/register', methods=['POST'])
+def register():
+    username = request.form.get('username')
+    password = request.form.get('password')
+
+    if not username:
+        return "Username is required"
+    if not password:
+        return "Password is required"
+    if len(password) < 6:
+        return "Password too short"
+    return "Registration successful"
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port= 5000, debug = True)
+    app.run(debug=True)
